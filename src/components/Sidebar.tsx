@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -12,8 +12,10 @@ import {
   X,
   LogOut,
   UserCheck,
-  CalendarDays
+  CalendarDays,
+  UserPlus,
 } from 'lucide-react';
+import { auth } from '../firebase/config';
 
 interface SidebarProps {
   onLogout: () => void;
@@ -21,6 +23,16 @@ interface SidebarProps {
 
 const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+
+  useEffect(() => {
+    const currentUser = auth.currentUser;
+    if (currentUser?.email === 'pugalpugalee333@gmail.com') {
+      setIsSuperAdmin(true);
+    } else {
+      setIsSuperAdmin(false);
+    }
+  }, [auth.currentUser]);
 
   const menuItems = [
     { path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -31,8 +43,12 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
     { path: '/monthly-attendance', icon: CalendarDays, label: 'Monthly Attendance' },
     { path: '/shift-assignment', icon: UserCheck, label: 'Shift Assignment' },
     { path: '/allowance', icon: DollarSign, label: 'Allowance' },
-    { path: '/reports', icon: BarChart3, label: 'Reports' }
+    { path: '/reports', icon: BarChart3, label: 'Reports' },
   ];
+
+  if (isSuperAdmin) {
+    menuItems.push({ path: '/create-user', icon: UserPlus, label: 'Users' });
+  }
 
   const handleLogout = () => {
     if (window.confirm('Are you sure you want to logout?')) {
@@ -59,50 +75,55 @@ const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
       )}
 
       {/* Sidebar */}
-      <aside
-        className={`
-          fixed left-0 top-0 h-full w-64 bg-white shadow-lg z-40 transform transition-transform duration-300 ease-in-out
-          ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-        `}
-      >
-        <div className="p-6 border-b border-gray-200">
-          <h1 className="text-xl font-bold text-gray-800">Employee Management</h1>
-          <p className="text-sm text-gray-600 mt-1">Admin Panel</p>
-        </div>
+<aside
+  className={`fixed left-0 top-0 h-full w-64 bg-white shadow-lg z-40 transform transition-transform duration-300 ease-in-out ${
+    isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+  } flex flex-col`}
+>
+  {/* Header */}
+  <div className="p-6 border-b border-gray-200 shrink-0">
+    <h1 className="text-xl font-bold text-gray-800">Employee Management</h1>
+    <p className="text-sm text-gray-600 mt-1">Admin Panel</p>
+  </div>
 
-        <nav className="flex-1 p-4">
-          <ul className="space-y-2">
-            {menuItems.map((item) => (
-              <li key={item.path}>
-                <NavLink
-                  to={item.path}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
-                      isActive
-                        ? 'bg-blue-100 text-blue-700 border-r-4 border-blue-700'
-                        : 'text-gray-700 hover:bg-gray-100'
-                    }`
-                  }
-                >
-                  <item.icon size={20} />
-                  <span className="font-medium">{item.label}</span>
-                </NavLink>
-              </li>
-            ))}
-          </ul>
-        </nav>
+  {/* Scrollable menu */}
+  <div className="flex-1 overflow-y-auto p-4">
+    <nav>
+      <ul className="space-y-2">
+        {menuItems.map((item) => (
+          <li key={item.path}>
+            <NavLink
+              to={item.path}
+              onClick={() => setIsMobileMenuOpen(false)}
+              className={({ isActive }) =>
+                `flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors duration-200 ${
+                  isActive
+                    ? 'bg-blue-100 text-blue-700 border-r-4 border-blue-700'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`
+              }
+            >
+              <item.icon size={20} />
+              <span className="font-medium">{item.label}</span>
+            </NavLink>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  </div>
 
-        <div className="p-4 border-t border-gray-200">
-          <button
-            onClick={handleLogout}
-            className="flex items-center space-x-3 px-4 py-3 w-full text-left text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
-          >
-            <LogOut size={20} />
-            <span className="font-medium">Logout</span>
-          </button>
-        </div>
-      </aside>
+  {/* Logout button (always visible and slightly above bottom) */}
+  <div className="p-4 border-t border-gray-200 shrink-0">
+    <button
+      onClick={handleLogout}
+      className="flex items-center space-x-3 px-4 py-3 w-full text-left text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-200"
+    >
+      <LogOut size={20} />
+      <span className="font-medium">Logout</span>
+    </button>
+  </div>
+</aside>
+
     </>
   );
 };
