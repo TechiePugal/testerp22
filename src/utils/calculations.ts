@@ -198,17 +198,31 @@ export const calculateSalary = (
 
   const totalPresentSessions = fnPresentDays + anPresentDays;
 
-  // Calculate basic salary
+  // Calculate per day salary based on employee type
+  let perDaySalary = 0;
+  if (employee.employeeType === 'staff') {
+    // Staff: Monthly Salary ÷ Total Working Days
+    perDaySalary = employee.monthlySalary / totalWorkingDays;
+  } else {
+    // Labour: Fixed Daily Wage
+    perDaySalary = employee.dailySalary;
+  }
+
+  // Calculate basic salary using present days
   let basicSalary = 0;
   let fnSalary = 0;
   let anSalary = 0;
 
-  fnSalary = fnPresentDays * (employee.salaryPerDay / 2);
-  anSalary = anPresentDays * (employee.salaryPerDay / 2);
+  // Total present days (full days + half days)
+  const totalPresentDays = fnPresentDays + anPresentDays;
+  
+  // For session-based calculation
+  fnSalary = fnPresentDays * (perDaySalary / 2);
+  anSalary = anPresentDays * (perDaySalary / 2);
   basicSalary = fnSalary + anSalary;
 
-  // Calculate OT amount (1.5x hourly rate)
-  const hourlyRate = employee.salaryPerDay / 8;
+  // Calculate OT amount using per hour salary
+  const hourlyRate = perDaySalary / 8;
   const otAmount = totalOtHours * hourlyRate * 1.5;
 
   // Calculate allowances

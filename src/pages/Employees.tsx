@@ -31,8 +31,8 @@ const Employees: React.FC = () => {
     groupId: '',
     designation: '',
     dateOfJoining: '',
-    salaryPerDay: 0,
-    salaryPerMonth: 0,
+    monthlySalary: 0,  // For staff
+    dailySalary: 0,    // For labour
     esaPf: false,
     education: '',
     emergencyContact: '',
@@ -98,8 +98,8 @@ const Employees: React.FC = () => {
         ...employeeForm,
         dob: new Date(employeeForm.dob),
         dateOfJoining: new Date(employeeForm.dateOfJoining),
-        salaryPerDay: Number(employeeForm.salaryPerDay),
-        salaryPerMonth: Number(employeeForm.salaryPerMonth)
+        monthlySalary: Number(employeeForm.monthlySalary),
+        dailySalary: Number(employeeForm.dailySalary)
       };
 
       if (editingEmployee) {
@@ -130,8 +130,8 @@ const Employees: React.FC = () => {
       groupId: employee.groupId,
       designation: employee.designation,
       dateOfJoining: new Date(employee.dateOfJoining).toISOString().split('T')[0],
-      salaryPerDay: employee.salaryPerDay,
-      salaryPerMonth: employee.salaryPerMonth,
+      monthlySalary: employee.monthlySalary || 0,
+      dailySalary: employee.dailySalary || 0,
       esaPf: employee.esaPf,
       education: employee.education,
       emergencyContact: employee.emergencyContact,
@@ -173,8 +173,8 @@ const Employees: React.FC = () => {
       groupId: '',
       designation: '',
       dateOfJoining: '',
-      salaryPerDay: 0,
-      salaryPerMonth: 0,
+      monthlySalary: 0,
+      dailySalary: 0,
       esaPf: false,
       education: '',
       emergencyContact: '',
@@ -662,22 +662,43 @@ const Employees: React.FC = () => {
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Salary Information</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <input
-                    type="number"
-                    value={employeeForm.salaryPerDay}
-                    onChange={(e) => setEmployeeForm({ ...employeeForm, salaryPerDay: Number(e.target.value) })}
-                    placeholder="Salary Per Day"
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
-                  <input
-                    type="number"
-                    value={employeeForm.salaryPerMonth}
-                    onChange={(e) => setEmployeeForm({ ...employeeForm, salaryPerMonth: Number(e.target.value) })}
-                    placeholder="Salary Per Month"
-                    className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                  />
+                  {employeeForm.employeeType === 'staff' ? (
+                    <input
+                      type="number"
+                      value={employeeForm.monthlySalary}
+                      onChange={(e) => setEmployeeForm({ ...employeeForm, monthlySalary: Number(e.target.value) })}
+                      placeholder="Monthly Salary"
+                      className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      value={employeeForm.dailySalary}
+                      onChange={(e) => setEmployeeForm({ ...employeeForm, dailySalary: Number(e.target.value) })}
+                      placeholder="Daily Salary"
+                      className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      required
+                    />
+                  )}
+                  
+                  <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+                    {employeeForm.employeeType === 'staff' ? (
+                      <div>
+                        <strong>Staff Salary:</strong>
+                        <br />• Monthly salary input
+                        <br />• Per day = Monthly ÷ Working days
+                        <br />• Per hour = Per day ÷ 8
+                      </div>
+                    ) : (
+                      <div>
+                        <strong>Labour Salary:</strong>
+                        <br />• Daily wage input
+                        <br />• Fixed daily rate
+                        <br />• Per hour = Daily ÷ 8
+                      </div>
+                    )}
+                  </div>
                   
                   <select
                     value={employeeForm.salaryMode}
@@ -891,8 +912,12 @@ const Employees: React.FC = () => {
                       <div className="text-sm text-gray-500">{getGroupName(employee.groupId)}</div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-sm text-gray-900">₹{employee.salaryPerDay}/day</div>
-                      <div className="text-sm text-gray-500">₹{employee.salaryPerMonth}/month</div>
+                      <div className="text-sm text-gray-900">
+                        {employee.employeeType === 'staff' 
+                          ? `₹${employee.monthlySalary || 0}/month`
+                          : `₹${employee.dailySalary || 0}/day`
+                        }
+                      </div>
                       <div className="text-xs text-gray-400">
                         {employee.salaryMode} {employee.esaPf && '• ESA/PF'}
                       </div>

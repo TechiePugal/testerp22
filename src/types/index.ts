@@ -52,8 +52,8 @@ export interface Employee {
   groupId: string;
   designation: string;
   dateOfJoining: Date;
-  salaryPerDay: number;
-  salaryPerMonth: number;
+  monthlySalary: number;  // For staff
+  dailySalary: number;    // For labour
   esaPf: boolean;
   education: string;
   emergencyContact: string;
