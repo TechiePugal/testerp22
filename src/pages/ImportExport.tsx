@@ -17,7 +17,12 @@ import {
   FileSpreadsheet,
   FileDown,
   FileUp,
-  Info
+  Info,
+  Shield,
+  RotateCcw,
+  HardDrive,
+  Cloud,
+  Archive
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { createDocument, getDocuments } from '../services/firestore';
@@ -35,13 +40,35 @@ interface ImportPreview {
   type: string;
 }
 
+interface BackupData {
+  collections: string[];
+  totalDocuments: number;
+  fileSize: string;
+  data: any;
+}
+
+// Firebase configuration for backup/restore
+const firebaseConfig = {
+  apiKey: "AIzaSyDicQksIDusUdMK7k2fIt2cvxyCY8yZg3c",
+  authDomain: "employeemanagement-16dba.firebaseapp.com",
+  projectId: "employeemanagement-16dba",
+  storageBucket: "employeemanagement-16dba.firebasestorage.app",
+  messagingSenderId: "723276151197",
+  appId: "1:723276151197:web:5df89d54869fc42dd4d774",
+  measurementId: "G-BT1YLST16T"
+};
+
 const ImportExport: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'import' | 'export'>('import');
+  const [activeTab, setActiveTab] = useState<'import' | 'export' | 'backup'>('import');
   const [isProcessing, setIsProcessing] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
   const [selectedDataType, setSelectedDataType] = useState<string>('employees');
+  const [backupData, setBackupData] = useState<BackupData | null>(null);
+  const [backupStatus, setBackupStatus] = useState('');
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const restoreFileInputRef = useRef<HTMLInputElement>(null);
 
   // Data type configurations
   const dataTypes = [
@@ -142,6 +169,225 @@ const ImportExport: React.FC = () => {
       description: 'Export all data as complete backup'
     }
   ];
+
+  // Initialize Firebase dynamically for backup/restore
+  const initializeFirebase = async () => {
+    try {
+      const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
+      const { getFirestore, collection, getDocs, doc, setDoc, writeBatch } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+      
+      const app = initializeApp(firebaseConfig);
+      const db = getFirestore(app);
+      
+      return { db, collection, getDocs, doc, setDoc, writeBatch };
+    } catch (error) {
+      console.error('Failed to initialize Firebase:', error);
+      throw error;
+    }
+  };
+
+  // Get all documents from a collection
+  const getAllDocuments = async (db: any, getDocs: any, collection: any, collectionName: string) => {
+    try {
+      const querySnapshot = await getDocs(collection(db, collectionName));
+      const documents: any[] = [];
+      
+      querySnapshot.forEach((doc: any) => {
+        documents.push({
+          id: doc.id,
+          ...doc.data()
+        });
+      });
+      
+      return documents;
+    } catch (error) {
+      console.error(`Error getting documents from ${collectionName}:`, error);
+      return [];
+    }
+  };
+
+  // Create complete Firebase backup
+  const createFirebaseBackup = async () => {
+    setIsProcessing(true);
+    setBackupStatus('Initializing Firebase connection...');
+    
+    try {
+      const { db, collection, getDocs } = await initializeFirebase();
+      
+      // All possible collection names
+      const collectionNames = [
+        'employees',
+        'attendance',
+        'allowances',
+        'holidays',
+        'companies',
+        'units',
+        'groups',
+        'shifts',
+        'shiftAssignments',
+        'users',
+        'settings'
+      ];
+
+      const allData: any = {};
+      const foundCollections: string[] = [];
+
+      setBackupStatus('Scanning collections...');
+
+      // Fetch data from each collection
+      for (const collectionName of collectionNames) {
+        try {
+          setBackupStatus(`Fetching ${collectionName}...`);
+          const documents = await getAllDocuments(db, getDocs, collection, collectionName);
+          
+          if (documents.length > 0) {
+            allData[collectionName] = documents;
+            foundCollections.push(collectionName);
+          }
+        } catch (error) {
+          console.log(`Collection ${collectionName} not found or empty`);
+        }
+      }
+
+      const totalDocuments = Object.values(allData).reduce((total: number, docs: any) => total + docs.length, 0);
+      const fileSize = formatFileSize(allData);
+
+      setBackupData({
+        collections: foundCollections,
+        totalDocuments,
+        fileSize,
+        data: allData
+      });
+
+      setBackupStatus(`✅ Successfully backed up ${foundCollections.length} collections with ${totalDocuments} total documents`);
+
+    } catch (error) {
+      console.error('Backup failed:', error);
+      setBackupStatus(`❌ Backup failed: ${error}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Download backup as JSON
+  const downloadBackup = () => {
+    if (!backupData) return;
+
+    const backupContent = {
+      metadata: {
+        exportDate: new Date().toISOString(),
+        version: '1.0',
+        collections: backupData.collections,
+        totalDocuments: backupData.totalDocuments
+      },
+      data: backupData.data
+    };
+
+    const dataStr = JSON.stringify(backupContent, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `firebase-backup-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    URL.revokeObjectURL(url);
+  };
+
+  // Handle restore file selection
+  const handleRestoreFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type === 'application/json') {
+      setRestoreFile(file);
+    } else {
+      alert('Please select a valid JSON backup file');
+    }
+  };
+
+  // Restore data from backup file
+  const restoreFromBackup = async () => {
+    if (!restoreFile) {
+      alert('Please select a backup file first');
+      return;
+    }
+
+    if (!window.confirm('⚠️ WARNING: This will replace ALL existing data with the backup data. This action cannot be undone. Are you sure you want to continue?')) {
+      return;
+    }
+
+    setIsProcessing(true);
+    setBackupStatus('Reading backup file...');
+
+    try {
+      const fileContent = await restoreFile.text();
+      const backupContent = JSON.parse(fileContent);
+      
+      if (!backupContent.data || !backupContent.metadata) {
+        throw new Error('Invalid backup file format');
+      }
+
+      setBackupStatus('Initializing Firebase connection...');
+      const { db, collection, doc, setDoc, writeBatch } = await initializeFirebase();
+
+      const collections = Object.keys(backupContent.data);
+      let restoredCount = 0;
+
+      setBackupStatus('Restoring data...');
+
+      // Restore each collection
+      for (const collectionName of collections) {
+        setBackupStatus(`Restoring ${collectionName}...`);
+        const documents = backupContent.data[collectionName];
+        
+        // Use batch writes for better performance
+        const batch = writeBatch(db);
+        let batchCount = 0;
+        
+        for (const document of documents) {
+          const { id, ...data } = document;
+          const docRef = doc(collection(db, collectionName), id);
+          batch.set(docRef, data);
+          batchCount++;
+          
+          // Commit batch every 500 documents (Firestore limit)
+          if (batchCount >= 500) {
+            await batch.commit();
+            batchCount = 0;
+          }
+        }
+        
+        // Commit remaining documents
+        if (batchCount > 0) {
+          await batch.commit();
+        }
+        
+        restoredCount += documents.length;
+      }
+
+      setBackupStatus(`✅ Successfully restored ${restoredCount} documents across ${collections.length} collections`);
+      setRestoreFile(null);
+      if (restoreFileInputRef.current) {
+        restoreFileInputRef.current.value = '';
+      }
+
+    } catch (error) {
+      console.error('Restore failed:', error);
+      setBackupStatus(`❌ Restore failed: ${error}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Format file size helper
+  const formatFileSize = (data: any) => {
+    const size = new Blob([JSON.stringify(data)]).size;
+    return size < 1024 ? `${size} B` : 
+           size < 1024 * 1024 ? `${(size / 1024).toFixed(1)} KB` : 
+           `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -356,7 +602,7 @@ const ImportExport: React.FC = () => {
           XLSX.utils.book_append_sheet(backupWb, XLSX.utils.json_to_sheet(allShifts), 'Shifts');
           XLSX.utils.book_append_sheet(backupWb, XLSX.utils.json_to_sheet(allHolidays), 'Holidays');
           
-          XLSX.writeFile(backupWb, `complete-backup-${new Date().toISOString().split('T')[0]}.xlsx`);
+          XLSX.writeFile(wb, `complete-backup-${new Date().toISOString().split('T')[0]}.xlsx`);
           setIsProcessing(false);
           return;
       }
@@ -399,8 +645,8 @@ const ImportExport: React.FC = () => {
       <div className="bg-white rounded-lg shadow-sm p-6">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Import & Export Data</h1>
-            <p className="text-gray-600 mt-1">Manage your data with bulk import and export capabilities</p>
+            <h1 className="text-2xl font-bold text-gray-900">Data Management Center</h1>
+            <p className="text-gray-600 mt-1">Import, export, backup, and restore your system data</p>
           </div>
           
           <div className="flex items-center bg-gray-100 rounded-lg p-1">
@@ -413,7 +659,7 @@ const ImportExport: React.FC = () => {
               }`}
             >
               <FileUp className="w-4 h-4" />
-              Import Data
+              Import
             </button>
             <button
               onClick={() => setActiveTab('export')}
@@ -424,7 +670,18 @@ const ImportExport: React.FC = () => {
               }`}
             >
               <FileDown className="w-4 h-4" />
-              Export Data
+              Export
+            </button>
+            <button
+              onClick={() => setActiveTab('backup')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md transition-colors ${
+                activeTab === 'backup'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Shield className="w-4 h-4" />
+              Backup & Restore
             </button>
           </div>
         </div>
@@ -689,6 +946,270 @@ const ImportExport: React.FC = () => {
                   <li>• Exported files are automatically downloaded to your device</li>
                   <li>• File names include the current date for easy identification</li>
                 </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Backup & Restore Tab */}
+      {activeTab === 'backup' && (
+        <div className="space-y-6">
+          {/* Backup Section */}
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-blue-100 rounded-lg">
+                <HardDrive className="w-8 h-8 text-blue-600" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">Create System Backup</h3>
+                <p className="text-gray-600">Create a complete backup of all your Firebase data</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Backup Actions */}
+              <div className="space-y-4">
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <h4 className="font-medium text-blue-900 mb-2">What's included in backup:</h4>
+                  <ul className="text-sm text-blue-800 space-y-1">
+                    <li>• All employee records and personal data</li>
+                    <li>• Complete attendance history</li>
+                    <li>• Allowance and payment records</li>
+                    <li>• Master data (companies, units, groups, shifts)</li>
+                    <li>• Holiday calendar and configurations</li>
+                    <li>• User accounts and permissions</li>
+                  </ul>
+                </div>
+
+                <button
+                  onClick={createFirebaseBackup}
+                  disabled={isProcessing}
+                  className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  {isProcessing ? (
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                  ) : (
+                    <Cloud className="w-6 h-6" />
+                  )}
+                  {isProcessing ? 'Creating Backup...' : 'Create Backup'}
+                </button>
+
+                {backupData && (
+                  <button
+                    onClick={downloadBackup}
+                    className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <Download className="w-6 h-6" />
+                    Download Backup File
+                  </button>
+                )}
+              </div>
+
+              {/* Backup Status */}
+              <div className="space-y-4">
+                {backupStatus && (
+                  <div className={`p-4 rounded-lg flex items-center gap-3 ${
+                    backupStatus.includes('failed') || backupStatus.includes('❌') ? 'bg-red-50 border border-red-200' : 
+                    backupStatus.includes('Successfully') || backupStatus.includes('✅') ? 'bg-green-50 border border-green-200' : 
+                    'bg-blue-50 border border-blue-200'
+                  }`}>
+                    {backupStatus.includes('failed') || backupStatus.includes('❌') ? (
+                      <AlertCircle className="w-6 h-6 text-red-600" />
+                    ) : backupStatus.includes('Successfully') || backupStatus.includes('✅') ? (
+                      <CheckCircle className="w-6 h-6 text-green-600" />
+                    ) : (
+                      <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                    )}
+                    <div className="flex-1">
+                      <p className={`text-sm font-medium ${
+                        backupStatus.includes('failed') || backupStatus.includes('❌') ? 'text-red-900' : 
+                        backupStatus.includes('Successfully') || backupStatus.includes('✅') ? 'text-green-900' : 
+                        'text-blue-900'
+                      }`}>
+                        {backupStatus}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {backupData && (
+                  <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <h4 className="font-medium text-gray-900 mb-3">Backup Summary</h4>
+                    <div className="grid grid-cols-3 gap-4 mb-4">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-600">{backupData.collections.length}</div>
+                        <div className="text-xs text-gray-600">Collections</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600">{backupData.totalDocuments}</div>
+                        <div className="text-xs text-gray-600">Documents</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-purple-600">{backupData.fileSize}</div>
+                        <div className="text-xs text-gray-600">File Size</div>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <h5 className="text-sm font-medium text-gray-700">Collections backed up:</h5>
+                      <div className="flex flex-wrap gap-1">
+                        {backupData.collections.map((collection) => (
+                          <span key={collection} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                            {collection}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Restore Section */}
+          <div className="bg-white rounded-lg shadow-sm p-6">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-3 bg-orange-100 rounded-lg">
+                <RotateCcw className="w-8 h-8 text-orange-600" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900">Restore from Backup</h3>
+                <p className="text-gray-600">Restore your system from a previously created backup file</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Restore Actions */}
+              <div className="space-y-4">
+                <div className="p-4 bg-red-50 rounded-lg border border-red-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertCircle className="w-5 h-5 text-red-600" />
+                    <h4 className="font-medium text-red-900">⚠️ Important Warning</h4>
+                  </div>
+                  <ul className="text-sm text-red-800 space-y-1">
+                    <li>• This will REPLACE ALL existing data</li>
+                    <li>• This action cannot be undone</li>
+                    <li>• Create a backup before restoring</li>
+                    <li>• Only use trusted backup files</li>
+                  </ul>
+                </div>
+
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                  <Archive className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <h4 className="text-lg font-medium text-gray-900 mb-2">Select Backup File</h4>
+                  <p className="text-gray-600 mb-4">Choose a JSON backup file to restore</p>
+                  
+                  <input
+                    ref={restoreFileInputRef}
+                    type="file"
+                    accept=".json"
+                    onChange={handleRestoreFileSelect}
+                    className="hidden"
+                  />
+                  
+                  <button
+                    onClick={() => restoreFileInputRef.current?.click()}
+                    className="inline-flex items-center gap-2 px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors"
+                  >
+                    <Upload className="w-5 h-5" />
+                    Choose Backup File
+                  </button>
+                  
+                  {restoreFile && (
+                    <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
+                      <p className="text-sm text-green-800">
+                        Selected: {restoreFile.name} ({(restoreFile.size / 1024 / 1024).toFixed(2)} MB)
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {restoreFile && (
+                  <button
+                    onClick={restoreFromBackup}
+                    disabled={isProcessing}
+                    className="w-full flex items-center justify-center gap-2 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50"
+                  >
+                    {isProcessing ? (
+                      <Loader2 className="w-6 h-6 animate-spin" />
+                    ) : (
+                      <RotateCcw className="w-6 h-6" />
+                    )}
+                    {isProcessing ? 'Restoring...' : 'Restore Data'}
+                  </button>
+                )}
+              </div>
+
+              {/* Restore Instructions */}
+              <div className="space-y-4">
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <h4 className="font-medium text-blue-900 mb-2">Restore Process:</h4>
+                  <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                    <li>Select a valid JSON backup file</li>
+                    <li>Review the warning and confirm</li>
+                    <li>Click "Restore Data" to begin</li>
+                    <li>Wait for the process to complete</li>
+                    <li>Verify your data after restoration</li>
+                  </ol>
+                </div>
+
+                <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+                  <h4 className="font-medium text-yellow-900 mb-2">Best Practices:</h4>
+                  <ul className="text-sm text-yellow-800 space-y-1">
+                    <li>• Always create a backup before restoring</li>
+                    <li>• Test restore on a development environment first</li>
+                    <li>• Verify backup file integrity</li>
+                    <li>• Inform users about the maintenance window</li>
+                  </ul>
+                </div>
+
+                {backupStatus && activeTab === 'backup' && (
+                  <div className={`p-4 rounded-lg ${
+                    backupStatus.includes('failed') || backupStatus.includes('❌') ? 'bg-red-50 border border-red-200' : 
+                    backupStatus.includes('Successfully') || backupStatus.includes('✅') ? 'bg-green-50 border border-green-200' : 
+                    'bg-blue-50 border border-blue-200'
+                  }`}>
+                    <p className={`text-sm ${
+                      backupStatus.includes('failed') || backupStatus.includes('❌') ? 'text-red-800' : 
+                      backupStatus.includes('Successfully') || backupStatus.includes('✅') ? 'text-green-800' : 
+                      'text-blue-800'
+                    }`}>
+                      {backupStatus}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Backup Instructions */}
+          <div className="bg-gray-50 rounded-lg p-6">
+            <div className="flex items-start gap-3">
+              <Info className="w-6 h-6 text-gray-600 mt-0.5" />
+              <div>
+                <h4 className="font-medium text-gray-900 mb-2">Backup & Restore Instructions</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm text-gray-700">
+                  <div>
+                    <h5 className="font-medium mb-2">Creating Backups:</h5>
+                    <ul className="space-y-1">
+                      <li>• Backups include all Firebase collections</li>
+                      <li>• Files are saved in JSON format</li>
+                      <li>• Include metadata for verification</li>
+                      <li>• Store backups in secure locations</li>
+                      <li>• Create regular automated backups</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <h5 className="font-medium mb-2">Restoring Data:</h5>
+                    <ul className="space-y-1">
+                      <li>• Only use trusted backup files</li>
+                      <li>• Verify file integrity before restore</li>
+                      <li>• Process replaces ALL existing data</li>
+                      <li>• Large restores may take several minutes</li>
+                      <li>• Test restore process regularly</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
