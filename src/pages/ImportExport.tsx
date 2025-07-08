@@ -368,7 +368,7 @@ const ImportExport: React.FC = () => {
         }
         
         // Use batch writes for better performance
-        const batch = writeBatch(db);
+        let batch = writeBatch(db);
         let batchCount = 0;
         
         for (const document of documents) {
@@ -384,8 +384,7 @@ const ImportExport: React.FC = () => {
           if (batchCount >= 500) {
             await batch.commit();
             // Create a new batch for subsequent operations
-            const newBatch = writeBatch(db);
-            batch = newBatch;
+            batch = writeBatch(db);
             batchCount = 0;
           }
         }
