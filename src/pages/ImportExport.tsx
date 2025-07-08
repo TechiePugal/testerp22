@@ -325,14 +325,34 @@ const ImportExport: React.FC = () => {
       const fileContent = await restoreFile.text();
       const backupContent = JSON.parse(fileContent);
       
-      if (!backupContent.data || !backupContent.metadata) {
-        throw new Error('Invalid backup file format');
+      // Handle different backup file formats
+      let collectionsData: any = {};
+      
+      // Check if it's the new format with metadata and data properties
+      if (backupContent.data && backupContent.metadata) {
+        collectionsData = backupContent.data;
+      } 
+      // Check if it's a direct export format (collections as top-level keys)
+      else if (typeof backupContent === 'object' && backupContent !== null) {
+        // Validate that it contains collection-like data
+        const possibleCollections = ['employees', 'attendance', 'allowances', 'holidays', 'companies', 'units', 'groups', 'shifts', 'shiftAssignments', 'users', 'settings'];
+        const hasValidCollections = Object.keys(backupContent).some(key => 
+          possibleCollections.includes(key) && Array.isArray(backupContent[key])
+        );
+        
+        if (hasValidCollections) {
+          collectionsData = backupContent;
+        } else {
+          throw new Error('Invalid backup file format - no recognizable collections found');
+        }
+      } else {
+        throw new Error('Invalid backup file format - file must contain valid JSON data');
       }
 
       setBackupStatus('Initializing Firebase connection...');
       const { db, collection, doc, setDoc, writeBatch } = await initializeFirebase();
 
-      const collections = Object.keys(backupContent.data);
+      const collections = Object.keys(collectionsData);
       let restoredCount = 0;
 
       setBackupStatus('Restoring data...');
@@ -340,7 +360,12 @@ const ImportExport: React.FC = () => {
       // Restore each collection
       for (const collectionName of collections) {
         setBackupStatus(`Restoring ${collectionName}...`);
-        const documents = backupContent.data[collectionName];
+        const documents = collectionsData[collectionName];
+        
+        // Skip if not an array or empty
+        if (!Array.isArray(documents) || documents.length === 0) {
+          continue;
+        }
         
         // Use batch writes for better performance
         const batch = writeBatch(db);
@@ -348,6 +373,9 @@ const ImportExport: React.FC = () => {
         
         for (const document of documents) {
           const { id, ...data } = document;
+          
+          // Generate ID if not present
+          const docId = id || crypto.randomUUID();
           const docRef = doc(collection(db, collectionName), id);
           batch.set(docRef, data);
           batchCount++;
@@ -375,7 +403,7 @@ const ImportExport: React.FC = () => {
 
     } catch (error) {
       console.error('Restore failed:', error);
-      setBackupStatus(`❌ Restore failed: ${error}`);
+      setBackupStatus(`❌ Restore failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsProcessing(false);
     }
