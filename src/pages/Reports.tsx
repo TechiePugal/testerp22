@@ -52,16 +52,33 @@ const Reports: React.FC = () => {
     setIsLoading(true);
     try {
       const [year, month] = selectedMonth.split('-').map(Number);
+      
+      // Create date range for the selected month
       const startDate = new Date(year, month - 1, 1);
       const endDate = new Date(year, month, 0);
+      
+      // Set time to cover full days
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
 
       const [attendanceData, allowancesData] = await Promise.all([
         getAttendanceByDateRange(startDate, endDate),
         getAllowancesByDateRange(startDate, endDate)
       ]);
 
-      setAttendance(attendanceData);
-      setAllowances(allowancesData);
+      // Additional filtering to ensure we only get data for the exact month
+      const filteredAttendance = attendanceData.filter(att => {
+        const attDate = new Date(att.date);
+        return attDate.getFullYear() === year && attDate.getMonth() === month - 1;
+      });
+      
+      const filteredAllowances = allowancesData.filter(all => {
+        const allDate = new Date(all.date);
+        return allDate.getFullYear() === year && allDate.getMonth() === month - 1;
+      });
+
+      setAttendance(filteredAttendance);
+      setAllowances(filteredAllowances);
 
       // Filter employees based on type filter
       const filteredEmployees = employees.filter(emp => 
@@ -69,7 +86,7 @@ const Reports: React.FC = () => {
       );
 
       const reports = filteredEmployees.map(employee => 
-        calculateSalary(employee, attendanceData, allowancesData, holidays, year, month - 1)
+        calculateSalary(employee, filteredAttendance, filteredAllowances, holidays, year, month - 1)
       );
 
       setSalaryReports(reports);

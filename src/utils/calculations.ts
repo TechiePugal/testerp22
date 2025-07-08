@@ -151,15 +151,16 @@ export const calculateSalary = (
 ): SalaryReport => {
   const totalWorkingDays = getWorkingDaysInMonth(year, month, holidays);
 
+  // Filter attendance and allowances by actual date (not creation date)
   const monthAttendance = attendance.filter(att => {
-    const attDate = new Date(att.date);
+    const attDate = new Date(att.date); // Use actual attendance date
     return att.employeeId === employee.id && 
            attDate.getFullYear() === year && 
            attDate.getMonth() === month;
   });
 
   const monthAllowances = allowances.filter(all => {
-    const allDate = new Date(all.date);
+    const allDate = new Date(all.date); // Use actual allowance date
     return all.employeeId === employee.id &&
            allDate.getFullYear() === year && 
            allDate.getMonth() === month;
