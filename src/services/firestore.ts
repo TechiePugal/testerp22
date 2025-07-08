@@ -113,6 +113,29 @@ export const getDocumentsWhere = async (
   }));
 };
 
+// Special function for queries that don't need ordering to avoid composite index issues
+export const getDocumentsWhereNoOrder = async (
+  collectionName: string,
+  field: string,
+  operator: any,
+  value: any
+) => {
+  const q = query(
+    collection(db, collectionName),
+    where(field, operator, value)
+  );
+  const querySnapshot = await getDocs(q);
+  return querySnapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+    createdAt: convertFirestoreTimestampToDate(doc.data().createdAt),
+    date: convertFirestoreTimestampToDate(doc.data().date),
+    dob: convertFirestoreTimestampToDate(doc.data().dob),
+    dateOfJoining: convertFirestoreTimestampToDate(doc.data().dateOfJoining),
+    weekStartDate: convertFirestoreTimestampToDate(doc.data().weekStartDate),
+    weekEndDate: convertFirestoreTimestampToDate(doc.data().weekEndDate)
+  }));
+};
 // Real-time listeners
 export const subscribeToCollection = (
   collectionName: string,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Users, Clock, ChevronLeft, ChevronRight, UserCheck, RotateCcw } from 'lucide-react';
-import { createDocument, updateDocument, deleteDocument, getDocuments, getDocumentsWhere } from '../services/firestore';
+import { createDocument, updateDocument, deleteDocument, getDocuments, getDocumentsWhereNoOrder } from '../services/firestore';
 import { formatDate, formatTime, isWorkingDay } from '../utils/calculations';
 import type { Employee, Shift, ShiftAssignment, Holiday } from '../types';
 
@@ -64,19 +64,14 @@ const ShiftAssignmentPage: React.FC = () => {
       const weekEnd = new Date(currentWeekStart);
       weekEnd.setDate(currentWeekStart.getDate() + 6);
       
-      const assignmentsData = await getDocumentsWhere(
+      const assignmentsData = await getDocumentsWhereNoOrder(
         'shiftAssignments',
         'weekStartDate',
-        '>=',
+        '==',
         currentWeekStart
       );
       
-      const weekAssignments = assignmentsData.filter(assignment => {
-        const assignmentWeekStart = new Date(assignment.weekStartDate);
-        return assignmentWeekStart.getTime() === currentWeekStart.getTime();
-      });
-      
-      setAssignments(weekAssignments);
+      setAssignments(assignmentsData);
     } catch (error) {
       console.error('Error loading week assignments:', error);
     }
