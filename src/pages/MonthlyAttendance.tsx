@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Search, Filter, Users, Clock, Download, RefreshCw, Calculator, ChevronLeft, ChevronRight } from 'lucide-react';
-import { getAttendanceByMonth, getDocuments } from '../services/firestore';
+import { getAttendanceByMonth, getAttendanceByDateRange, getDocuments } from '../services/firestore';
 import { formatDate, formatTime, calculateAttendanceDuration, getWorkingDaysInMonth } from '../utils/calculations';
 import type { Attendance, Employee, Shift, Company, Unit, Group, Holiday } from '../types';
 
