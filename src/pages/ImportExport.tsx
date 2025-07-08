@@ -376,13 +376,16 @@ const ImportExport: React.FC = () => {
           
           // Generate ID if not present
           const docId = id || crypto.randomUUID();
-          const docRef = doc(collection(db, collectionName), id);
+          const docRef = doc(collection(db, collectionName), docId);
           batch.set(docRef, data);
           batchCount++;
           
           // Commit batch every 500 documents (Firestore limit)
           if (batchCount >= 500) {
             await batch.commit();
+            // Create a new batch for subsequent operations
+            const newBatch = writeBatch(db);
+            batch = newBatch;
             batchCount = 0;
           }
         }
