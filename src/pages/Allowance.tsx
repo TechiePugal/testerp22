@@ -3,7 +3,6 @@ import { Plus, Edit2, Trash2, Search, DollarSign, Calendar } from 'lucide-react'
 import { createDocument, updateDocument, deleteDocument, getDocuments, subscribeToCollection } from '../services/firestore';
 import { formatDate, formatCurrency } from '../utils/calculations';
 import type { Allowance, Employee } from '../types';
-import * as XLSX from 'xlsx'; // ✅ Required for Excel export
 
 const AllowancePage: React.FC = () => {
   const [allowances, setAllowances] = useState<Allowance[]>([]);
@@ -116,54 +115,6 @@ const AllowancePage: React.FC = () => {
     });
     setEditingAllowance(null);
   };
-const exportAllowanceReport = () => {
-  const workbook = XLSX.utils.book_new();
-
-  const summaryData: {
-    'Employee ID': string;
-    'Name': string;
-    'Total Food Count': number;
-    'Total Food Amount': number;
-  }[] = [];
-
-  const employeeMap = new Map<string, { id: string; name: string; count: number; total: number }>();
-
-  filteredAllowances.forEach((allowance) => {
-    if (allowance.type !== 'food') return;
-
-    const emp = getEmployeeById(allowance.employeeId);
-    if (!emp) return;
-
-    const key = emp.id;
-    if (!employeeMap.has(key)) {
-      employeeMap.set(key, {
-        id: emp.employeeId,
-        name: emp.name,
-        count: 0,
-        total: 0,
-      });
-    }
-
-    const data = employeeMap.get(key)!;
-    data.count += 1;
-    data.total += allowance.amount;
-  });
-
-  for (const [, value] of employeeMap.entries()) {
-    summaryData.push({
-      'Employee ID': value.id,
-      'Name': value.name,
-      'Total Food Count': value.count,
-      'Total Food Amount': value.total,
-    });
-  }
-
-  const sheet = XLSX.utils.json_to_sheet(summaryData);
-  XLSX.utils.book_append_sheet(workbook, sheet, 'Food Allowance Summary');
-
-  XLSX.writeFile(workbook, 'Employee_Food_Allowance_Summary.xlsx');
-};
-
 
   const getEmployeeById = (employeeId: string) => {
     return employees.find(emp => emp.id === employeeId);
@@ -204,13 +155,7 @@ const exportAllowanceReport = () => {
           >
             <Plus className="w-5 h-5" />
             Add Allowance
-          </button><button
-  onClick={exportAllowanceReport}
-  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors"
->
-  Export Allowance Report
-</button>
-
+          </button>
         </div>
       </div>
 

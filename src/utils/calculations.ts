@@ -45,11 +45,47 @@ export const minutesToHoursString = (minutes: number): string => {
   return `${hours}h ${mins}m`;
 };
 
-export const minutesToDecimalHours = (minutes: number): number => {
-  return Math.round((minutes / 60) * 60) / 60;
+// Convert hours:minutes string to decimal hours for calculations
+export const timeStringToDecimalHours = (timeString: string): number => {
+  if (!timeString) return 0;
+  
+  // Handle formats like "1h 15m"
+  if (timeString.includes('h')) {
+    const match = timeString.match(/(\d+)h\s*(\d+)m/);
+    if (match) {
+      const hours = parseInt(match[1]);
+      const minutes = parseInt(match[2]);
+      return hours + (minutes / 60);
+    }
+  }
+  
+  // Handle "1.25" decimal format
+  if (timeString.includes('.')) {
+    return parseFloat(timeString);
+  }
+  
+  // Handle "1:15" format
+  if (timeString.includes(':')) {
+    const [hours, minutes] = timeString.split(':').map(Number);
+    return hours + (minutes / 60);
+  }
+  
+  return parseFloat(timeString) || 0;
 };
 
-// ✅ CORRECTED OT Calculation: OT only if working time >= 9 hours (540 minutes)
+// Convert decimal hours to "Xh Ym" format
+export const decimalHoursToTimeString = (decimalHours: number): string => {
+  if (decimalHours === 0) return "0h 0m";
+  
+  const hours = Math.floor(decimalHours);
+  const minutes = Math.round((decimalHours - hours) * 60);
+  
+  return `${hours}h ${minutes}m`;
+};
+
+// ✅ SIMPLIFIED OT CALCULATION: Only subtract 45min lunch, anything over 8hrs = OT
+// Replace the calculateAttendanceDuration function with this:
+
 export const calculateAttendanceDuration = (startTime: string, endTime: string) => {
   if (!startTime || !endTime) {
     return {
@@ -58,9 +94,10 @@ export const calculateAttendanceDuration = (startTime: string, endTime: string) 
       workingHours: 0,
       otMinutes: 0,
       otHours: 0,
-      isOtEligible: false,
+      otTimeString: '0h 0m',
       workingDuration: '0h 0m',
-      otDuration: '0h 0m'
+      otDuration: '0h 0m',
+      isOtEligible: false
     };
   }
 
@@ -70,37 +107,40 @@ export const calculateAttendanceDuration = (startTime: string, endTime: string) 
   // Handle next day scenario
   let totalMinutes = endMinutes - startMinutes;
   if (totalMinutes < 0) {
-    totalMinutes += 24 * 60;
+    totalMinutes += 24 * 60; // Add 24 hours for next day
   }
 
-  // Deduct lunch break (45 minutes)
+  // STEP 1: Subtract 45 minutes lunch break
   const workingMinutes = Math.max(0, totalMinutes - 45);
+  const workingHours = workingMinutes / 60;
 
-  const standardWorkMinutes = 8 * 60; // 525 minutes
-  const minimumOtThreshold = 8 * 60 + 30; // 540 minutes
-
-  // Is eligible for OT if working time ≥ 9 hours
-  const isOtEligible = workingMinutes >= minimumOtThreshold;
-
-  // Calculate raw OT (working - standard)
-  let rawOtMinutes = isOtEligible ? Math.max(0, workingMinutes - standardWorkMinutes) : 0;
-
-  // ✅ OT counted only if > 20 mins
-  const otMinutes = rawOtMinutes > 20 ? rawOtMinutes : 0;
+  // STEP 2: Calculate OT (anything over 8 hours)
+  const standardHours = 8;
+  const otHours = Math.max(0, workingHours - standardHours);
+  const otMinutes = Math.round(otHours * 60);
+  
+  // ✅ DIRECT OT DURATION - Simple format
+  let otDurationText = '0h 0m';
+  if (otMinutes > 0) {
+    const otHoursDisplay = Math.floor(otMinutes / 60);
+    const otMinsDisplay = otMinutes % 60;
+    otDurationText = `${otHoursDisplay}h ${otMinsDisplay}m`;
+  }
 
   return {
     totalMinutes,
     workingMinutes,
-    workingHours: minutesToDecimalHours(workingMinutes),
+    workingHours,
     otMinutes,
-    otHours: minutesToDecimalHours(otMinutes),
-    isOtEligible,
+    otHours,
+    otTimeString: otDurationText,
     workingDuration: minutesToHoursString(workingMinutes),
-    otDuration: minutesToHoursString(otMinutes)
+    otDuration: otDurationText, // ✅ This will show "3h 43m" directly
+    isOtEligible: otMinutes > 0
   };
 };
 
-
+// Updated salary calculation with simplified OT logic
 export const calculateSalary = (
   employee: Employee,
   attendance: Attendance[],
@@ -135,9 +175,15 @@ export const calculateSalary = (
     if (att.fnStatus === 'present') fnPresentDays++;
     if (att.anStatus === 'present') anPresentDays++;
 
+    // Handle both string ("1h 15m") and decimal (1.25) OT formats
     if (att.otHours) {
-      totalOtHours += att.otHours;
+      if (typeof att.otHours === 'string') {
+        totalOtHours += timeStringToDecimalHours(att.otHours);
+      } else {
+        totalOtHours += att.otHours;
+      }
     } else if (att.actualStartTime && att.actualEndTime) {
+      // ✅ Use simplified OT calculation
       const duration = calculateAttendanceDuration(att.actualStartTime, att.actualEndTime);
       totalCalculatedOtHours += duration.otHours;
     }
@@ -145,12 +191,14 @@ export const calculateSalary = (
     totalPermissionHours += att.permissionHours || 0;
   });
 
+  // Use calculated OT if no manual OT entered
   if (totalOtHours === 0) {
     totalOtHours = totalCalculatedOtHours;
   }
 
   const totalPresentSessions = fnPresentDays + anPresentDays;
 
+  // Calculate basic salary
   let basicSalary = 0;
   let fnSalary = 0;
   let anSalary = 0;
@@ -159,24 +207,29 @@ export const calculateSalary = (
   anSalary = anPresentDays * (employee.salaryPerDay / 2);
   basicSalary = fnSalary + anSalary;
 
+  // Calculate OT amount (1.5x hourly rate)
   const hourlyRate = employee.salaryPerDay / 8;
   const otAmount = totalOtHours * hourlyRate * 1.5;
 
+  // Calculate allowances
   const totalAllowances = monthAllowances.reduce((sum, all) => sum + all.amount, 0);
 
+  // Calculate excess permission deduction (for staff only)
   let excessPermissionDeduction = 0;
   if (employee.employeeType === 'staff' && totalPermissionHours > 2) {
     const excessHours = totalPermissionHours - 2;
     excessPermissionDeduction = excessHours * hourlyRate;
   }
 
+  // Calculate ESA/PF deduction
   let esaPfDeduction = 0;
   if (employee.esaPf) {
     const grossSalary = basicSalary + otAmount;
     esaPfDeduction = grossSalary * 0.12;
   }
 
-  const netSalary = basicSalary + otAmount - totalAllowances - excessPermissionDeduction - esaPfDeduction;
+  // Calculate net salary
+  const netSalary = basicSalary + otAmount + totalAllowances - excessPermissionDeduction - esaPfDeduction;
 
   return {
     employee,

@@ -113,6 +113,13 @@ const MonthlyAttendance: React.FC = () => {
     return 'Absent';
   };
 
+  // New function to calculate attendance value
+  const getAttendanceValue = (fnStatus: string, anStatus: string) => {
+    if (fnStatus === 'present' && anStatus === 'present') return 1; // Full Day
+    if (fnStatus === 'present' || anStatus === 'present') return 0.5; // Half Day
+    return 0; // Absent
+  };
+
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
       case 'Full Day': return 'bg-green-100 text-green-800';
@@ -161,13 +168,15 @@ const MonthlyAttendance: React.FC = () => {
       'Unit',
       'Group',
       'Total Days',
-      'Present Days',
-      'Absent Days',
-      'FN Present',
-      'AN Present',
+      // 'Present Days (Count)',
+      // 'Absent Days (Count)',
+      // 'FN Present',
+      // 'AN Present',
+      'Total Attendance Value',
       'Total OT Hours',
-      'Total Permission Hours',
-      'Attendance Rate'
+      // 'Total Permission Hours',
+      // 'Attendance Rate (%)',
+      // 'Average Attendance Value'
     ];
 
     const csvData = filteredEmployeeData.map(({ employee, attendance: empAttendance }) => {
@@ -182,9 +191,19 @@ const MonthlyAttendance: React.FC = () => {
       const absentDays = totalDays - presentDays;
       const fnPresent = empAttendance.filter(att => att.fnStatus === 'present').length;
       const anPresent = empAttendance.filter(att => att.anStatus === 'present').length;
-      const totalOtHours = empAttendance.reduce((sum, att) => sum + (att.otHours || 0), 0);
+      
+      // Calculate total attendance value (1 for full day, 0.5 for half day, 0 for absent)
+      const totalAttendanceValue = empAttendance.reduce((sum, att) => 
+        sum + getAttendanceValue(att.fnStatus, att.anStatus), 0
+      );
+      
+     const totalOtHours = parseFloat(
+  empAttendance.reduce((sum, att) => sum + (att.otHours || 0), 0).toFixed(2)
+);
+
       const totalPermissionHours = empAttendance.reduce((sum, att) => sum + (att.permissionHours || 0), 0);
       const attendanceRate = totalDays > 0 ? ((presentDays / totalDays) * 100).toFixed(1) : '0';
+      const averageAttendanceValue = totalDays > 0 ? (totalAttendanceValue / totalDays).toFixed(2) : '0';
       
       return [
         employee.employeeId,
@@ -194,13 +213,15 @@ const MonthlyAttendance: React.FC = () => {
         unit?.name || '',
         group?.name || '',
         totalDays,
-        presentDays,
-        absentDays,
-        fnPresent,
-        anPresent,
+        // presentDays,
+        // absentDays,
+        // fnPresent,
+        // anPresent,
+        totalAttendanceValue.toFixed(1),
         totalOtHours,
-        totalPermissionHours,
-        `${attendanceRate}%`
+        // totalPermissionHours,
+        // attendanceRate,
+        // averageAttendanceValue
       ];
     });
 
@@ -221,7 +242,7 @@ const MonthlyAttendance: React.FC = () => {
   const workingDays = getWorkingDaysInMonth(year, month - 1, holidays);
   const monthName = new Date(year, month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
-  // Calculate summary statistics
+  // Calculate summary statistics with attendance values
   const stats = {
     totalEmployees: filteredEmployeeData.length,
     totalAttendanceRecords: attendance.length,
@@ -234,7 +255,10 @@ const MonthlyAttendance: React.FC = () => {
         }, 0) / filteredEmployeeData.length
       : 0,
     totalOtHours: attendance.reduce((sum, att) => sum + (att.otHours || 0), 0),
-    totalPermissionHours: attendance.reduce((sum, att) => sum + (att.permissionHours || 0), 0)
+    totalPermissionHours: attendance.reduce((sum, att) => sum + (att.permissionHours || 0), 0),
+    totalAttendanceValue: attendance.reduce((sum, att) => 
+      sum + getAttendanceValue(att.fnStatus, att.anStatus), 0
+    )
   };
 
   return (
@@ -333,8 +357,8 @@ const MonthlyAttendance: React.FC = () => {
           <div className="flex items-center gap-3">
             <Calendar className="w-8 h-8 text-purple-600" />
             <div>
-              <p className="text-sm text-gray-600">Records</p>
-              <p className="text-xl font-bold text-purple-600">{stats.totalAttendanceRecords}</p>
+              <p className="text-sm text-gray-600">Total Value</p>
+              <p className="text-xl font-bold text-purple-600">{stats.totalAttendanceValue.toFixed(1)}</p>
             </div>
           </div>
         </div>
@@ -498,6 +522,9 @@ const MonthlyAttendance: React.FC = () => {
                   <th className="px-6 py-3 text-center text-xs font-medium text-purple-600 uppercase tracking-wider">
                     AN Present
                   </th>
+                  <th className="px-6 py-3 text-center text-xs font-medium text-teal-600 uppercase tracking-wider">
+                    Att. Value
+                  </th>
                   <th className="px-6 py-3 text-center text-xs font-medium text-orange-600 uppercase tracking-wider">
                     OT Hours
                   </th>
@@ -521,6 +548,9 @@ const MonthlyAttendance: React.FC = () => {
                   const absentDays = totalDays - presentDays;
                   const fnPresent = empAttendance.filter(att => att.fnStatus === 'present').length;
                   const anPresent = empAttendance.filter(att => att.anStatus === 'present').length;
+                  const totalAttendanceValue = empAttendance.reduce((sum, att) => 
+                    sum + getAttendanceValue(att.fnStatus, att.anStatus), 0
+                  );
                   const totalOtHours = empAttendance.reduce((sum, att) => sum + (att.otHours || 0), 0);
                   const totalPermissionHours = empAttendance.reduce((sum, att) => sum + (att.permissionHours || 0), 0);
                   const attendanceRate = totalDays > 0 ? (presentDays / totalDays) * 100 : 0;
@@ -569,6 +599,9 @@ const MonthlyAttendance: React.FC = () => {
                         <span className="text-sm font-medium text-purple-600">{anPresent}</span>
                       </td>
                       <td className="px-6 py-4 text-center">
+                        <span className="text-sm font-medium text-teal-600">{totalAttendanceValue.toFixed(1)}</span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
                         <span className="text-sm font-medium text-orange-600">{totalOtHours.toFixed(1)}</span>
                       </td>
                       <td className="px-6 py-4 text-center">
@@ -585,6 +618,7 @@ const MonthlyAttendance: React.FC = () => {
                                 attendanceRate >= 90 ? 'bg-green-500' :
                                 attendanceRate >= 75 ? 'bg-yellow-500' : 'bg-red-500'
                               }`}
+
                               style={{ width: `${Math.min(attendanceRate, 100)}%` }}
                             ></div>
                           </div>

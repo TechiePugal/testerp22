@@ -11,39 +11,30 @@ import MonthlyAttendance from '../pages/MonthlyAttendance';
 import ShiftAssignment from '../pages/ShiftAssignment';
 import Allowance from '../pages/Allowance';
 import Reports from '../pages/Reports';
-import CreateUserForm from './auth/CreateUserForm';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../firebase/config';
-
+import Export from '../pages/FirebaseDataExporter'
 const Layout: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        const token = await user.getIdToken();
-        localStorage.setItem('token', token);
-        setIsAuthenticated(true);
-      } else {
-        localStorage.removeItem('token');
-        setIsAuthenticated(false);
-      }
-      setIsLoading(false);
-    });
-
-    return () => unsubscribe();
+    // Check if user is already logged in
+    const authStatus = localStorage.getItem('isAuthenticated');
+    if (authStatus === 'true') {
+      setIsAuthenticated(true);
+    }
+    setIsLoading(false);
   }, []);
 
   const handleLogin = (success: boolean) => {
-    if (success) setIsAuthenticated(true);
+    if (success) {
+      setIsAuthenticated(true);
+      localStorage.setItem('isAuthenticated', 'true');
+    }
   };
 
   const handleLogout = () => {
-    auth.signOut().then(() => {
-      setIsAuthenticated(false);
-      localStorage.removeItem('token');
-    });
+    setIsAuthenticated(false);
+    localStorage.removeItem('isAuthenticated');
   };
 
   if (isLoading) {
@@ -74,8 +65,7 @@ const Layout: React.FC = () => {
             <Route path="/shift-assignment" element={<ShiftAssignment />} />
             <Route path="/allowance" element={<Allowance />} />
             <Route path="/reports" element={<Reports />} />
-            <Route path="/create-user" element={<CreateUserForm />} />
-            <Route path="*" element={<Navigate to="/dashboard" />} />
+            <Route path="/export" element={<Export />} />
           </Routes>
         </main>
       </div>

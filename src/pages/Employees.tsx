@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Search, Filter, User, Building2, Clock } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Filter, User, Building2, Clock, Download } from 'lucide-react';
 import { createDocument, updateDocument, deleteDocument, getDocuments, subscribeToCollection } from '../services/firestore';
 import { formatDate } from '../utils/calculations';
 import type { Employee, Company, Unit, Group, Shift } from '../types';
+import * as XLSX from 'xlsx';
 
 const Employees: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -16,6 +17,8 @@ const Employees: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'staff' | 'labour'>('all');
   const [companyFilter, setCompanyFilter] = useState('');
+  const [unitFilter, setUnitFilter] = useState('');
+  const [groupFilter, setGroupFilter] = useState('');
 
   const [employeeForm, setEmployeeForm] = useState({
     name: '',
@@ -217,6 +220,22 @@ const Employees: React.FC = () => {
     }
   }, [employeeForm.employeeType, shifts]);
 
+  // Reset dependent filters when parent filter changes
+  useEffect(() => {
+    if (companyFilter) {
+      // Reset unit and group filters when company changes
+      setUnitFilter('');
+      setGroupFilter('');
+    }
+  }, [companyFilter]);
+
+  useEffect(() => {
+    if (unitFilter) {
+      // Reset group filter when unit changes
+      setGroupFilter('');
+    }
+  }, [unitFilter]);
+
   const getCompanyName = (companyId: string) => {
     return companies.find(c => c.id === companyId)?.name || '';
   };
@@ -233,6 +252,27 @@ const Employees: React.FC = () => {
     return shifts.find(s => s.id === shiftId)?.name || '';
   };
 
+  // Get available units based on selected company filter
+  const getAvailableUnits = () => {
+    if (!companyFilter) return units;
+    return units.filter(unit => unit.companyId === companyFilter);
+  };
+
+  // Get available groups based on selected unit filter
+  const getAvailableGroups = () => {
+    if (!unitFilter) return groups;
+    return groups.filter(group => group.unitId === unitFilter);
+  };
+
+  // Clear all filters function
+  const clearAllFilters = () => {
+    setSearchTerm('');
+    setTypeFilter('all');
+    setCompanyFilter('');
+    setUnitFilter('');
+    setGroupFilter('');
+  };
+
   const filteredEmployees = employees.filter(employee => {
     const matchesSearch = 
       employee.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -241,38 +281,113 @@ const Employees: React.FC = () => {
     
     const matchesType = typeFilter === 'all' || employee.employeeType === typeFilter;
     const matchesCompany = !companyFilter || employee.companyId === companyFilter;
+    const matchesUnit = !unitFilter || employee.unitId === unitFilter;
+    const matchesGroup = !groupFilter || employee.groupId === groupFilter;
 
-    return matchesSearch && matchesType && matchesCompany;
+    return matchesSearch && matchesType && matchesCompany && matchesUnit && matchesGroup;
   });
+
+  // Excel Download Function
+  const downloadExcel = () => {
+    try {
+      // Prepare data for Excel export
+      const excelData = filteredEmployees.map(employee => ({
+        'Name': employee.name,
+        'ID': employee.employeeId,
+        'Type': employee.employeeType,
+        'Company': getCompanyName(employee.companyId),
+        'Unit': getUnitName(employee.unitId),
+        'Group': getGroupName(employee.groupId),
+        'Designation': employee.designation,
+        'Shift': getShiftName(employee.shiftId),
+        'Salary/Day': employee.salaryPerDay,
+        'Salary/Month': employee.salaryPerMonth,
+        'Status': employee.isActive ? 'Active' : 'Inactive'
+      }));
+
+      // Create workbook and worksheet
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      const wb = XLSX.utils.book_new();
+      
+      // Add worksheet to workbook
+      XLSX.utils.book_append_sheet(wb, ws, 'Employees');
+      
+      // Set column widths for better formatting
+      const colWidths = [
+        { wch: 25 }, // Name
+        { wch: 15 }, // ID
+        { wch: 10 }, // Type
+        { wch: 20 }, // Company
+        { wch: 20 }, // Unit
+        { wch: 20 }, // Group
+        { wch: 25 }, // Designation
+        { wch: 20 }, // Shift
+        { wch: 12 }, // Salary/Day
+        { wch: 12 }, // Salary/Month
+        { wch: 10 }  // Status
+      ];
+      ws['!cols'] = colWidths;
+      
+      // Generate filename with current date
+      const currentDate = new Date().toISOString().split('T')[0];
+      const filename = `Employees_${currentDate}.xlsx`;
+      
+      // Download the file
+      XLSX.writeFile(wb, filename);
+      
+      // Show success message
+      alert(`Excel file "${filename}" downloaded successfully!`);
+    } catch (error) {
+      console.error('Error downloading Excel:', error);
+      alert('Error downloading Excel file. Please try again.');
+    }
+  };
 
   return (
     <div className="space-y-6">
       {/* Header */}
-<div className="bg-white rounded-lg shadow-sm p-6 sticky top-0 z-10">
-  <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-    <div>
-      <h1 className="text-2xl font-bold text-gray-900">Employee Management</h1>
-      <p className="text-gray-600 mt-1">Manage employee information and records</p>
-    </div>
-    <button
-      onClick={() => setShowForm(true)}
-      className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-    >
-      <Plus className="w-5 h-5" />
-      Add Employee
-    </button>
-  </div>
-</div>
+      <div className="bg-white rounded-lg shadow-sm p-6 sticky top-0 z-10">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Employee Management</h1>
+            <p className="text-gray-600 mt-1">Manage employee information and records</p>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={downloadExcel}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              <Download className="w-5 h-5" />
+              Download Excel
+            </button>
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Plus className="w-5 h-5" />
+              Add Employee
+            </button>
+          </div>
+        </div>
+      </div>
 
-
-      {/* Filters */}
+      {/* Enhanced Filters */}
       <div className="bg-white rounded-lg shadow-sm p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Filter className="w-5 h-5 text-gray-500" />
-          <h3 className="text-lg font-semibold text-gray-900">Filters</h3>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <Filter className="w-5 h-5 text-gray-500" />
+            <h3 className="text-lg font-semibold text-gray-900">Filters</h3>
+          </div>
+          <button
+            onClick={clearAllFilters}
+            className="text-sm text-blue-600 hover:text-blue-800 underline"
+          >
+            Clear All Filters
+          </button>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
             <input
@@ -284,6 +399,7 @@ const Employees: React.FC = () => {
             />
           </div>
           
+          {/* Employee Type Filter */}
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value as any)}
@@ -294,6 +410,7 @@ const Employees: React.FC = () => {
             <option value="labour">Labour</option>
           </select>
           
+          {/* Company Filter */}
           <select
             value={companyFilter}
             onChange={(e) => setCompanyFilter(e.target.value)}
@@ -304,7 +421,74 @@ const Employees: React.FC = () => {
               <option key={company.id} value={company.id}>{company.name}</option>
             ))}
           </select>
+
+          {/* Unit Filter */}
+          <select
+            value={unitFilter}
+            onChange={(e) => setUnitFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={!companyFilter}
+          >
+            <option value="">All Units</option>
+            {getAvailableUnits().map(unit => (
+              <option key={unit.id} value={unit.id}>{unit.name}</option>
+            ))}
+          </select>
+
+          {/* Group Filter */}
+          <select
+            value={groupFilter}
+            onChange={(e) => setGroupFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={!unitFilter}
+          >
+            <option value="">All Groups</option>
+            {getAvailableGroups().map(group => (
+              <option key={group.id} value={group.id}>{group.name}</option>
+            ))}
+          </select>
+
+          {/* Active Filter Count */}
+          <div className="flex items-center px-3 py-2 bg-blue-50 rounded-lg">
+            <span className="text-sm text-blue-800 font-medium">
+              Showing {filteredEmployees.length} of {employees.length}
+            </span>
+          </div>
         </div>
+
+        {/* Active Filters Display */}
+        {(searchTerm || typeFilter !== 'all' || companyFilter || unitFilter || groupFilter) && (
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <div className="flex flex-wrap gap-2">
+              <span className="text-sm text-gray-600">Active filters:</span>
+              {searchTerm && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  Search: "{searchTerm}"
+                </span>
+              )}
+              {typeFilter !== 'all' && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  Type: {typeFilter}
+                </span>
+              )}
+              {companyFilter && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                  Company: {getCompanyName(companyFilter)}
+                </span>
+              )}
+              {unitFilter && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                  Unit: {getUnitName(unitFilter)}
+                </span>
+              )}
+              {groupFilter && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-pink-100 text-pink-800">
+                  Group: {getGroupName(groupFilter)}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Employee Form Modal */}
